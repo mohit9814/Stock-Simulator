@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { GameState, PortfolioItem, TradeRecord, Strategy, Company, PortfolioHistory } from "@/types";
-import { getLevelFromXP, generateMarketEvents } from "./engine";
+import { getLevelFromXP, getLevelIndex, generateMarketEvents } from "./engine";
+import { calculateRiskMetrics, calculatePerformanceXP } from "@/lib/riskMetrics";
 import companiesData from "@/data/companies.json";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -63,6 +64,8 @@ interface GameStateContextType extends GameState {
   addStrategy: (s: Omit<Strategy, "id">) => void;
   removeStrategy: (id: string) => void;
   toggleStrategy: (id: string) => void;
+  showLevelUp: boolean;
+  acknowledgeLevelUp: () => void;
 }
 
 // ── Default State ──────────────────────────────────────────────────────────────
@@ -79,6 +82,10 @@ const defaultState: GameState = {
   tradeLog: [],
   strategies: [],
   indexValue: 1000000,
+  lastLevel: 0,
+  activeRegime: "Normal",
+  regimeRemaining: 0,
+  companies: companiesData as Company[],
 };
 
 const GameStateContext = createContext<GameStateContextType | undefined>(undefined);
@@ -89,6 +96,7 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<GameState>(defaultState);
   const [isLoaded, setIsLoaded] = useState(false);
   const [tempName, setTempName] = useState("");
+  const [showLevelUp, setShowLevelUp] = useState(false);
 
   // Hydrate from localStorage
   useEffect(() => {
@@ -103,6 +111,10 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
         if (p.quarterCount === undefined) p.quarterCount = 0;
         if (p.username === undefined)     p.username = "";
         if (p.indexValue === undefined)   p.indexValue = 1000000;
+        if (p.lastLevel === undefined)    p.lastLevel = getLevelIndex(p.level || "Beginner");
+        if (p.activeRegime === undefined) p.activeRegime = "Normal";
+        if (p.regimeRemaining === undefined) p.regimeRemaining = 0;
+        if (!p.companies || p.companies.length === 0) p.companies = companiesData as Company[];
 
         // Backfill source/reason on old trade records
         if (p.tradeLog) {
@@ -371,29 +383,118 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
   const simulateQuarter = useCallback(() => {
     const nextQuarter = state.quarterCount + 1;
     const companies = companiesData as Company[];
-    const { news, multipliers } = generateMarketEvents(companies, nextQuarter);
 
-    // 1. Calculate Index performance (average return of all stocks)
-    let totalMarketMultiplier = 0;
-    companies.forEach(company => {
-      const avgGrowth = (company.revenue_growth + company.profit_growth) / 2;
-      const drift = avgGrowth / 100 / 4;
-      const noise = (Math.random() * 0.16) - 0.08;
+    // 0. Update Regime State
+    let newRegime = state.activeRegime;
+    let newRegimeRemaining = state.regimeRemaining - 1;
+    let newBubbleSector = state.bubbleSector;
+    let newLeaderSector = state.leaderSector;
+
+    if (newRegimeRemaining <= 0) {
+      const roll = Math.random();
+      const sectors = Array.from(new Set(state.companies.map(c => c.sector)));
+
+      if (newRegime === "Bubble" || newRegime === "Sector Mania") {
+        newRegime = "Crash";
+        newRegimeRemaining = 2 + Math.floor(Math.random() * 2); // Crash lasts 2-3 quarters
+        newBubbleSector = undefined;
+      } else if (newRegime === "Crash" || newRegime === "World Crisis") {
+        newRegime = "Recovery";
+        newRegimeRemaining = 4;
+        newLeaderSector = sectors[Math.floor(Math.random() * sectors.length)];
+        newBubbleSector = undefined;
+      } else if (roll < 0.10) {
+        newRegime = "Sector Mania";
+        newRegimeRemaining = 4 + Math.floor(Math.random() * 2);
+        newBubbleSector = sectors[Math.floor(Math.random() * sectors.length)];
+      } else if (roll < 0.20) {
+        newRegime = "World Crisis";
+        newRegimeRemaining = 4;
+      } else if (roll < 0.35) {
+        newRegime = "Bubble";
+        newRegimeRemaining = 4 + Math.floor(Math.random() * 4);
+        newBubbleSector = sectors[Math.floor(Math.random() * sectors.length)];
+      } else if (roll < 0.50) {
+        newRegime = Math.random() < 0.6 ? "Bull" : "Bear";
+        newRegimeRemaining = 4 + Math.floor(Math.random() * 4);
+      } else {
+        newRegime = "Normal";
+        newRegimeRemaining = 0;
+      }
+    }
+
+    const { news, multipliers, newScenario } = generateMarketEvents(
+      companies, 
+      nextQuarter, 
+      newRegime, 
+      newBubbleSector, 
+      newLeaderSector,
+      state.activeScenario
+    );
+
+    const FUNDAMENTAL_WEIGHT = 0.4; // Only 40% of annual growth is priced in immediately per quarter
+    const REVERSION_STRENGTH = 0.075; // 7.5% of valuation gap is closed per quarter
+
+    // 1. Evolve Company Financials & Calculate Multipliers
+    const updatedCompanies = state.companies.map(company => {
+      const { revenue_growth, profit_growth, current_price, pe, industry_pe } = company;
+      
+      // A. Fundamental Growth with "Earnings Surprise" noise
+      const earningsSurprise = (Math.random() * 0.10) - 0.05; // ±5% surprise
+      const quarterlyGrowth = (profit_growth / 100 / 4) * (1 + earningsSurprise);
+      const drift = quarterlyGrowth * FUNDAMENTAL_WEIGHT;
+
+      // B. Mean Reversion Factor
+      // If PE > Industry PE, factor is negative (drag). If PE < Industry, factor is positive (lift).
+      const valuationGap = (industry_pe / (pe || industry_pe)) - 1;
+      const reversionFactor = valuationGap * REVERSION_STRENGTH;
+
+      // C. Market & Noise
       const eventMultiplier = multipliers[company.name] ?? 1.0;
-      totalMarketMultiplier += (1 + drift + noise) * eventMultiplier;
+      
+      // D. Valuation Gravity (Market wide drag if PE is too high)
+      const avgPe = state.companies.reduce((sum, c) => sum + (c.pe || 0), 0) / state.companies.length;
+      const valuationDrag = avgPe > 25 ? 1 - (avgPe - 25) * 0.002 : 1.0; // 0.2% drag for every point above 25 PE
+      
+      const noise = (Math.random() * 0.08) - 0.04; // ±4% price noise
+      
+      const priceMultiplier = (1 + drift + (eventMultiplier - 1) + noise + reversionFactor) * valuationDrag;
+      
+      // Update Price
+      const newPrice = Math.max(1, Math.round(current_price * priceMultiplier));
+      
+      // Update PE: (Price / Earnings)
+      // New Earnings = Old Earnings * (1 + growth)
+      // Since PE = Price / Earnings, New PE = NewPrice / (OldPrice / OldPE * (1 + growth))
+      // New PE = (NewPrice / OldPrice) * OldPE / (1 + growth)
+      const growthFactor = 1 + quarterlyGrowth;
+      const newPe = Number(((newPrice / current_price) * pe / growthFactor).toFixed(1));
+
+      return {
+        ...company,
+        current_price: newPrice,
+        pe: newPe,
+        revenue_trend: revenue_growth > 15 ? "Improving" : revenue_growth > 5 ? "Stable" : "Declining",
+        profit_trend: profit_growth > 12 ? "Improving" : profit_growth > 4 ? "Stable" : "Declining",
+      };
     });
-    const marketReturn = totalMarketMultiplier / companies.length;
+
+    // 2. Calculate Index performance (average return of all companies in state)
+    let totalMarketReturn = 0;
+    updatedCompanies.forEach((co, i) => {
+      const oldCo = state.companies[i];
+      totalMarketReturn += co.current_price / oldCo.current_price;
+    });
+    const marketReturn = totalMarketReturn / updatedCompanies.length;
     const newIndexValue = Math.round(state.indexValue * marketReturn);
 
-    // 2. Apply market price movements to existing holdings
+    // 3. Apply movements to Portfolio (sync with stateful company prices)
     let newPortfolio = state.portfolio.map(item => {
-      const company = companies.find(c => c.name === item.companyName);
-      if (!company) return item;
-      const avgGrowth = (company.revenue_growth + company.profit_growth) / 2;
-      const drift = avgGrowth / 100 / 4;
-      const noise = (Math.random() * 0.16) - 0.08;
-      const eventMultiplier = multipliers[item.companyName] ?? 1.0;
-      const multiplier = (1 + drift + noise) * eventMultiplier;
+      const newCo = updatedCompanies.find(c => c.name === item.companyName);
+      const oldCo = state.companies.find(c => c.name === item.companyName);
+      if (!newCo || !oldCo) return item;
+
+      const multiplier = newCo.current_price / oldCo.current_price;
       return { ...item, currentValue: Math.max(0, Math.round(item.currentValue * multiplier)) };
     });
 
@@ -435,9 +536,49 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
         history: updatedHistory,
         newsFeed: [...news, ...prev.newsFeed].slice(0, 50),
         tradeLog: trades.length > 0 ? [...trades, ...prev.tradeLog] : prev.tradeLog,
+        activeRegime: newRegime,
+        regimeRemaining: newRegimeRemaining,
+        bubbleSector: newBubbleSector,
+        leaderSector: newLeaderSector,
+        activeScenario: (newScenario && newScenario.step <= newScenario.totalSteps) ? newScenario : undefined,
+        companies: updatedCompanies,
       };
     });
+
+    // 4. Calculate Performance XP
+    setTimeout(() => {
+      setState(prev => {
+        const metrics = calculateRiskMetrics(prev.history);
+        const isStable = prev.quarterCount > 4;
+
+        // Skip performance XP and celebrations if not stable enough (first 4 quarters)
+        const { total, breakdown } = isStable 
+          ? calculatePerformanceXP(metrics, prev.portfolio) 
+          : { total: 0, breakdown: [] };
+        
+        const newTotalXP = prev.xp + total;
+        const newLevel = getLevelFromXP(newTotalXP);
+        const newLevelIdx = getLevelIndex(newLevel);
+        
+        const xpNews = breakdown.map(b => `🏆 Achievement: +${b.xp} XP for ${b.label}`);
+        
+        const levelUpTriggered = newLevelIdx > prev.lastLevel && isStable;
+        if (levelUpTriggered) {
+          setShowLevelUp(true);
+        }
+
+        return {
+          ...prev,
+          xp: newTotalXP,
+          level: newLevel,
+          lastLevel: newLevelIdx,
+          newsFeed: [...xpNews, ...prev.newsFeed].slice(0, 50),
+        };
+      });
+    }, 100);
   }, [state, runStrategies]);
+
+  const acknowledgeLevelUp = () => setShowLevelUp(false);
 
   const updatePortfolioReturns = (
     newHoldings: PortfolioItem[],
@@ -514,6 +655,7 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
       runStrategies,
       simulateQuarter,
       addStrategy, removeStrategy, toggleStrategy,
+      showLevelUp, acknowledgeLevelUp,
     }}>
       {children}
     </GameStateContext.Provider>

@@ -60,7 +60,7 @@ export default function StrategyPage() {
         <Info size={16} className="text-blue-400 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-blue-200 space-y-1">
           <p className="font-semibold text-blue-300">How strategies work</p>
-          <p>Every time you advance a quarter, <span className="text-white">enabled strategies run automatically</span>. They first apply <strong>exit rules</strong> (stop-loss, take-profit, criteria violation, sector trim), then scan all companies using entry filters (ROE, PE, debt, growth) and invest the specified <strong>percentage of your available cash</strong> per qualifying company — as long as you have funds.</p>
+          <p>Every time you advance a quarter, <span className="text-blue-400 text-xs">enabled strategies run automatically</span>. They first apply <strong>exit rules</strong> (stop-loss, take-profit, criteria violation, sector trim), then scan all companies using entry filters (ROE, PE, debt, growth) and invest the specified <strong>percentage of your available cash</strong> per qualifying company — as long as you have funds.</p>
           <p className="text-blue-400 text-xs">Note: Diversification limits (Max Sector %) are now calculated against your <strong>Total Networth (NAV)</strong>, not just invested cash. This ensures large cash reserves don't block your strategy from buying into sectors early.</p>
         </div>
       </div>
@@ -211,9 +211,9 @@ export default function StrategyPage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                       {s.stopLossPct > 0 && <Chip label={`SL −${s.stopLossPct}%`} color="red" />}
-                       {s.takeProfitPct > 0 && <Chip label={`TP +${s.takeProfitPct}%`} color="teal" />}
-                       {s.sellIfCriteriaFailed && <Chip label="Exit on fail" color="amber" />}
+                      {s.stopLossPct > 0 && <Chip label={`SL −${s.stopLossPct}%`} color="red" />}
+                      {s.takeProfitPct > 0 && <Chip label={`TP +${s.takeProfitPct}%`} color="teal" />}
+                      {s.sellIfCriteriaFailed && <Chip label="Exit on fail" color="amber" />}
                     </div>
                   </div>
 

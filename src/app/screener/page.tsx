@@ -9,8 +9,6 @@ import { formatINR } from "@/lib/formatINR";
 import { useGameState } from "@/game/GameStateProvider";
 import { useToast } from "@/components/Toast";
 
-const companies = companiesData as Company[];
-
 // ── Filter criteria config ──────────────────────────────────────────────────
 interface NumericFilter {
   key: keyof Company;
@@ -32,7 +30,7 @@ const DEFAULT_FILTERS: NumericFilter[] = [
 type SortKey = keyof Company | "none";
 
 export default function ScreenerPage() {
-  const { cash, buyStock, sellStock, portfolio } = useGameState();
+  const { cash, buyStock, sellStock, portfolio, companies } = useGameState();
   const { showToast, ToastRenderer } = useToast();
 
   const [searchTerm, setSearchTerm]       = useState("");

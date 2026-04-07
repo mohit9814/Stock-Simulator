@@ -1,4 +1,5 @@
-import { PortfolioHistory } from "@/types";
+import { PortfolioHistory, PortfolioItem, Company } from "@/types";
+import companiesData from "@/data/companies.json";
 
 /**
  * Standard Risk-Free Rate (Annual 6% -> Quarterly 1.5%)
@@ -15,6 +16,8 @@ export interface RiskMetrics {
   maxDrawdown: number;
   rSquared: number;
   var95: number;
+  totalReturn: number;
+  indexReturn: number;
 }
 
 export function calculateRiskMetrics(history: PortfolioHistory[]): RiskMetrics {
@@ -28,6 +31,8 @@ export function calculateRiskMetrics(history: PortfolioHistory[]): RiskMetrics {
     maxDrawdown: 0,
     rSquared: 0,
     var95: 0,
+    totalReturn: 0,
+    indexReturn: 0,
   };
 
   if (history.length < 2) return metrics;
@@ -91,5 +96,59 @@ export function calculateRiskMetrics(history: PortfolioHistory[]): RiskMetrics {
   const varIndex = Math.floor(n * 0.05);
   metrics.var95 = sortedReturns[varIndex] || 0;
 
+  // 10. Absolute Performance (Total Period)
+  const first = history[0];
+  const last = history[history.length - 1];
+  metrics.totalReturn = (last.totalEquity - first.totalEquity) / first.totalEquity;
+  metrics.indexReturn = (last.indexValue - first.indexValue) / first.indexValue;
+
   return metrics;
+}
+
+export interface XPReward {
+  total: number;
+  breakdown: { label: string; xp: number }[];
+}
+
+export function calculatePerformanceXP(metrics: RiskMetrics, portfolio: PortfolioItem[]): XPReward {
+  const breakdown: { label: string; xp: number }[] = [];
+  
+  // 1. Scaled down base XP
+  breakdown.push({ label: "Quarterly Survival", xp: 5 });
+
+  // 2. Alpha Bonus (Harder to earn)
+  if (metrics.alpha > 0) {
+    const alphaXP = Math.floor(metrics.alpha * 500); // Was 1000
+    if (alphaXP > 0) {
+      breakdown.push({ label: "Alpha Generator (Market Beat)", xp: alphaXP });
+    }
+  }
+
+  // 3. Sharpe Bonus (Scaled down)
+  if (metrics.sharpeRatio > 1.0) { // Only reward above average Sharpe
+    const sharpeXP = Math.floor((metrics.sharpeRatio - 1.0) * 10); // Was 20
+    if (sharpeXP > 0) {
+       breakdown.push({ label: "Sharpe Skill (Risk Management)", xp: sharpeXP });
+    }
+  }
+
+  // 4. Safety Bonus (Low Drawdown)
+  if (metrics.maxDrawdown > -0.05) { // Tighter limit for safety bonus
+    breakdown.push({ label: "Safety First (Cap Capital Preservation)", xp: 10 });
+  }
+
+  // 5. Diversification Bonus
+  const companies = companiesData as Company[];
+  const uniqueSectors = new Set(
+    portfolio.map(p => {
+      const co = companies.find(c => c.name === p.companyName);
+      return co?.sector;
+    }).filter(Boolean)
+  );
+  if (uniqueSectors.size >= 8) { // Was 5
+    breakdown.push({ label: "Master Diversifier (8+ Sectors)", xp: 15 });
+  }
+
+  const total = breakdown.reduce((sum, item) => sum + item.xp, 0);
+  return { total, breakdown };
 }

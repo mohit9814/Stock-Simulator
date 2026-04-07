@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { GameStateProvider } from "@/game/GameStateProvider";
 import NavBar from "@/components/NavBar";
+import LevelUpSplash from "@/components/LevelUpSplash";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -26,6 +27,7 @@ export default function RootLayout({
           <main className="flex-1 p-4 md:p-8 max-w-6xl w-full mx-auto">
             {children}
           </main>
+          <LevelUpSplash />
         </GameStateProvider>
       </body>
     </html>

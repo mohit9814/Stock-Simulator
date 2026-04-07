@@ -14,8 +14,8 @@ interface CompanyModalProps {
 }
 
 export default function CompanyModal({ companyName, onClose }: CompanyModalProps) {
-  const company = companiesData.find(c => c.name === companyName) as Company | undefined;
-  const { cash, buyStock, newsFeed, quarterCount } = useGameState();
+  const { cash, buyStock, newsFeed, quarterCount, companies } = useGameState();
+  const company = companies.find(c => c.name === companyName);
   const [tradeAmount, setTradeAmount] = useState<string>("10000");
   const { showToast, ToastRenderer } = useToast();
 
@@ -70,8 +70,33 @@ export default function CompanyModal({ companyName, onClose }: CompanyModalProps
               </div>
             </div>
 
+            {/* Business Profile (Screener.in style) */}
+            <div className="flex flex-col lg:flex-row gap-6 mb-8 border-t border-slate-800 pt-6">
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  About {company.name}
+                </h3>
+                <p className="text-slate-400 text-sm leading-relaxed text-wrap break-words">
+                  {company.about || "No profile data available for this company."}
+                </p>
+              </div>
+              <div className="lg:w-64 flex-shrink-0 bg-slate-800/30 rounded-xl p-4 border border-slate-700/50 h-fit">
+                <h3 className="text-sm font-bold text-emerald-400 uppercase tracking-widest mb-3">Key Points</h3>
+                <ul className="space-y-2">
+                  {(company.keyPoints || ["Market leader", "Solid cash flows", "Steady growth"]).map((point, i) => (
+                    <li key={i} className="text-slate-400 text-xs flex gap-2">
+                      <span className="text-emerald-500">•</span>
+                      <span className="break-words">{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
             {/* Key Metrics Grid */}
+            <h3 className="text-sm font-bold text-slate-300 uppercase tracking-widest mb-4">Financial Dashboard</h3>
             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+              <MetricCard label="Current Price" value={formatINR(company.current_price)} highlight="blue" />
               <MetricCard label="Intrinsic Value" value={formatINR(company.intrinsic_value)} />
               <MetricCard
                 label="P/E Ratio"
@@ -97,19 +122,17 @@ export default function CompanyModal({ companyName, onClose }: CompanyModalProps
                 value={`${company.profit_growth}%`}
                 highlight={company.profit_growth >= 12 ? "green" : "amber"}
               />
-              <MetricCard
-                label="Profit Margin"
-                value={`${company.profit_margin}%`}
-                highlight={company.profit_margin >= 15 ? "green" : "amber"}
-              />
-              <MetricCard label="Interest Coverage" value={`${company.interest_coverage}x`} highlight={company.interest_coverage > 3 ? "green" : "red"} />
-              <MetricCard label="Inventory Days" value={`${company.inventory_days}`} highlight="blue" />
-              <MetricCard label="Receivable Days" value={`${company.receivable_days}`} highlight="blue" />
-              <MetricCard label="WC Days" value={`${company.working_capital_days}`} highlight="amber" />
             </div>
 
             {/* Trends */}
-            <h3 className="text-lg font-bold text-white mb-4">Performance Trends</h3>
+            <h3 className="text-sm font-bold text-slate-300 uppercase tracking-widest mb-4">Operational Efficiency</h3>
+            <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+               <MetricCard label="Inventory Days" value={`${company.inventory_days}`} highlight="blue" />
+               <MetricCard label="Receivable Days" value={`${company.receivable_days}`} highlight="blue" />
+               <MetricCard label="Interest Coverage" value={`${company.interest_coverage}x`} highlight={company.interest_coverage > 3 ? "green" : "red"} />
+               <MetricCard label="WC Days" value={`${company.working_capital_days}`} highlight="amber" />
+            </div>
+
             <div className="grid sm:grid-cols-3 gap-4 mb-8">
               {(["revenue_trend", "profit_trend", "margin_trend"] as const).map(key => {
                 const val = company[key];
@@ -125,18 +148,18 @@ export default function CompanyModal({ companyName, onClose }: CompanyModalProps
 
             {/* Related News */}
             {relatedNews.length > 0 && (
-              <div className="mb-8">
-                <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
-                  <Newspaper size={16} className="text-amber-400" /> Recent News
+              <div className="mb-8 border-t border-slate-800 pt-6">
+                <h3 className="text-sm font-bold text-slate-300 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <Newspaper size={16} className="text-amber-400" /> Recent Market Intelligence
                 </h3>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
                   {relatedNews.map((item, i) => {
                     const isNeg = item.includes("📉") || item.includes("⚠️") || item.includes("🔻");
                     return (
-                      <div key={i} className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs border
+                      <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl text-xs border
                         ${isNeg ? "bg-red-500/5 border-red-500/20 text-red-300" : "bg-emerald-500/5 border-emerald-500/20 text-emerald-300"}`}>
-                        {isNeg ? <TrendingDown size={13} className="flex-shrink-0 mt-0.5" /> : <TrendingUp size={13} className="flex-shrink-0 mt-0.5" />}
-                        {item}
+                        {isNeg ? <TrendingDown size={14} className="flex-shrink-0 mt-0.5" /> : <TrendingUp size={14} className="flex-shrink-0 mt-0.5" />}
+                        <span className="leading-relaxed">{item}</span>
                       </div>
                     );
                   })}

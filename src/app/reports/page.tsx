@@ -9,10 +9,11 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cell, PieChart, Pie,
 } from "recharts";
 import { calculateRiskMetrics, RiskMetrics } from "@/lib/riskMetrics";
-import { Info, ShieldCheck, Zap, Activity, Target, ShieldAlert, BarChart2 } from "lucide-react";
+import { Info, ShieldCheck, Zap, Activity, Target, ShieldAlert, BarChart2, X } from "lucide-react";
 
 export default function ReportsPage() {
   const { tradeLog, quarterCount, history } = useGameState();
+  const [selectedMetric, setSelectedMetric] = useState<any>(null);
   const [typeFilter, setTypeFilter] = useState<"all" | "buy" | "sell">("all");
   const [sectorFilter, setSectorFilter] = useState("All");
   const [sourceFilter, setSourceFilter] = useState("All");
@@ -61,65 +62,94 @@ export default function ReportsPage() {
       value: riskMetrics.sharpeRatio.toFixed(2), 
       icon: <Activity className="text-emerald-400" size={16} />,
       desc: "Excess return per unit of total risk. >1 is good, >2 is excellent.",
-      rating: riskMetrics.sharpeRatio > 1.5 ? "Excellent" : riskMetrics.sharpeRatio > 1 ? "Good" : "Sub-optimal"
+      rating: riskMetrics.sharpeRatio > 1.5 ? "Excellent" : riskMetrics.sharpeRatio > 1 ? "Good" : "Sub-optimal",
+      formula: "(Rp - Rf) / σp"
     },
     { 
       label: "Sortino Ratio", 
       value: riskMetrics.sortinoRatio.toFixed(2), 
       icon: <TrendingUp className="text-blue-400" size={16} />,
       desc: "Return relative to downside volatility only. Better for asymmetrical returns.",
-      rating: riskMetrics.sortinoRatio > 2 ? "High Quality" : "Moderate"
+      rating: riskMetrics.sortinoRatio > 2 ? "High Quality" : "Moderate",
+      formula: "(Rp - Rf) / σd"
     },
     { 
       label: "Treynor Ratio", 
       value: (riskMetrics.treynorRatio * 100).toFixed(2) + "%", 
       icon: <Zap className="text-amber-400" size={16} />,
       desc: "Excess return per unit of systematic risk (Beta).",
-      rating: "Efficiency"
+      rating: "Efficiency",
+      formula: "(Rp - Rf) / βp"
     },
     { 
       label: "Beta", 
       value: riskMetrics.beta.toFixed(2), 
       icon: <BarChart2 className="text-purple-400" size={16} />,
       desc: "Sensitivity to market moves. <1 means less volatile than market.",
-      rating: riskMetrics.beta < 1 ? "Defensive" : "Aggressive"
+      rating: riskMetrics.beta < 1 ? "Defensive" : "Aggressive",
+      formula: "Cov(Rp, Rm) / Var(Rm)"
     },
     { 
       label: "Alpha (Qtr)", 
       value: (riskMetrics.alpha * 100).toPrecision(2) + "%", 
       icon: <Target className="text-emerald-500" size={16} />,
       desc: "Outperformance relative to benchmark after adjusting for risk.",
-      rating: riskMetrics.alpha > 0 ? "Beating Market" : "Underperforming"
+      rating: riskMetrics.alpha > 0 ? "Beating Market" : "Underperforming",
+      formula: "Rp - [Rf + βp(Rm - Rf)]"
     },
     { 
       label: "Standard Dev", 
       value: (riskMetrics.stdDev * 100).toFixed(2) + "%", 
       icon: <Activity className="text-slate-400" size={16} />,
       desc: "Statistical measure of quarterly return volatility.",
-      rating: "Volatility"
+      rating: "Volatility",
+      formula: "√[Σ(Ri - μ)² / (n-1)]"
     },
     { 
       label: "Max Drawdown", 
       value: (riskMetrics.maxDrawdown * 100).toFixed(1) + "%", 
       icon: <ShieldAlert className="text-red-400" size={16} />,
       desc: "Largest peak-to-trough decline in portfolio value.",
-      rating: riskMetrics.maxDrawdown < -0.15 ? "High Risk" : "Controlled"
+      rating: riskMetrics.maxDrawdown < -0.15 ? "High Risk" : "Controlled",
+      formula: "(Peak - Trough) / Peak"
     },
     { 
       label: "R-Squared", 
       value: riskMetrics.rSquared.toFixed(2), 
       icon: <ShieldCheck className="text-teal-400" size={16} />,
       desc: "How much of returns are explained by market moves. Closest to 1 = Index hugger.",
-      rating: riskMetrics.rSquared > 0.8 ? "Index Aligned" : "Active Strategy"
+      rating: riskMetrics.rSquared > 0.8 ? "Index Aligned" : "Active Strategy",
+      formula: "Correlation(Rp, Rm)²"
     },
     { 
       label: "Value at Risk (95%)", 
       value: (riskMetrics.var95 * 100).toFixed(1) + "%", 
       icon: <ShieldAlert className="text-orange-400" size={16} />,
       desc: "Potential quarterly loss with 95% confidence level.",
-      rating: "Risk Floor"
+      rating: "Risk Floor",
+      formula: "5th Percentile of returns",
+      breakdown: `Out of ${history.length - 1} quarters, 95% were better than this return.`
     },
   ];
+
+  const getMetricDeepDive = (label: string) => {
+    const rf = 0.015; // Quarterly RF
+    const n = history.length - 1;
+    if (n < 1) return "Not enough data to break down.";
+
+    switch(label) {
+      case "Sharpe Ratio":
+        return `Calculation: (Avg Return - RF) / StdDev. Your portfolio averaged more than the 1.5% risk-free rate, and we divide that excess by your volatility (${(riskMetrics.stdDev * 100).toFixed(1)}%).`;
+      case "Beta":
+        return `Calculation: Covariance(Portfolio, Market) / Variance(Market). A Beta of ${riskMetrics.beta.toFixed(2)} means your portfolio is ${riskMetrics.beta > 1 ? 'more' : 'less'} volatile than the index core movements.`;
+      case "Alpha (Qtr)":
+        return `Calculation: Actual Return - [RF + Beta * (Mkt - RF)]. This is 'Skill' - the return you generated above what was expected given your risk (Beta).`;
+      case "Max Drawdown":
+        return `Your worst dip was ${(riskMetrics.maxDrawdown * 100).toFixed(1)}%. This measures the "stomach" needed to hold your strategy during peak-to-trough crashes.`;
+      default:
+        return "This metric assesses how efficiently you are using capital relative to market risk.";
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto py-8 space-y-8 animate-in fade-in slide-in-from-bottom-4">
@@ -139,7 +169,11 @@ export default function ReportsPage() {
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {riskCards.map(card => (
-            <div key={card.label} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors group">
+            <div 
+              key={card.label} 
+              onClick={() => setSelectedMetric(card)}
+              className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-emerald-500/50 transition-all cursor-pointer group shadow-lg active:scale-95"
+            >
               <div className="flex items-start justify-between mb-3">
                 <div className="p-2 bg-slate-800/50 rounded-xl group-hover:bg-slate-800 transition-colors">
                   {card.icon}
@@ -304,6 +338,64 @@ export default function ReportsPage() {
           </table>
         )}
       </div>
+
+      {/* Metric Detail Modal */}
+      {selectedMetric && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-start mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-slate-800 rounded-2xl text-emerald-400">
+                  {selectedMetric.icon}
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-white">{selectedMetric.label}</h3>
+                  <p className="text-emerald-500 text-sm font-semibold">{selectedMetric.rating}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedMetric(null)}
+                className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-slate-950/50 rounded-2xl p-5 border border-slate-800">
+                <p className="text-slate-400 text-sm mb-2 font-medium">Concept</p>
+                <p className="text-slate-200 text-sm leading-relaxed">{selectedMetric.desc}</p>
+              </div>
+
+              <div>
+                <p className="text-slate-500 text-[10px] uppercase tracking-widest mb-3 font-bold text-center">Mathematical Foundation</p>
+                <div className="bg-emerald-500/5 rounded-2xl p-6 border border-emerald-500/10 text-center">
+                  <code className="text-emerald-400 font-mono text-lg">{selectedMetric.formula || "Standard Formula Applied"}</code>
+                </div>
+              </div>
+
+              <div className="bg-slate-800/30 rounded-2xl p-5">
+                <p className="text-slate-400 text-sm mb-2 font-medium">Your Calculation</p>
+                <p className="text-slate-300 text-sm italic">
+                  {getMetricDeepDive(selectedMetric.label)}
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-slate-800 flex justify-between items-center text-xs">
+                <span className="text-slate-500 italic">Data processed from {history.length} data points.</span>
+                <span className="text-emerald-500 font-bold">Result: {selectedMetric.value}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedMetric(null)}
+              className="w-full mt-8 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition-colors"
+            >
+              Close Insight
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

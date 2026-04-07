@@ -29,6 +29,8 @@ export interface Company {
   debt_trend: string;
   margin_trend: string;
   quality_score?: string;
+  about?: string;
+  keyPoints?: string[];
 }
 
 export interface PortfolioItem {
@@ -110,6 +112,14 @@ export interface PortfolioHistory {
   indexValue: number;
 }
 
+export interface MarketScenario {
+  type: "CORRECTION" | "MAJOR_CRASH" | "MEGA_CRASH";
+  name: string;
+  step: number; 
+  totalSteps: number;
+  recoveryShape: "V" | "U" | "W";
+}
+
 export interface GameState {
   username: string;
   xp: number;
@@ -122,4 +132,11 @@ export interface GameState {
   tradeLog: TradeRecord[];
   strategies: Strategy[];
   indexValue: number;
+  lastLevel: number;
+  activeRegime: "Normal" | "Bull" | "Bear" | "Bubble" | "Crash" | "Recovery" | "World Crisis" | "Sector Mania";
+  regimeRemaining: number;
+  bubbleSector?: string;
+  leaderSector?: string;
+  companies: Company[];
+  activeScenario?: MarketScenario;
 }

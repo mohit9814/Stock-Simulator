@@ -43,11 +43,9 @@ const PIE_COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4
 export default function PortfolioPage() {
   const {
     cash, portfolio, quarterCount, history, newsFeed,
-    buyStock, sellStock, simulateQuarter,
+    buyStock, sellStock, simulateQuarter, companies
   } = useGameState();
   const { showToast, ToastRenderer } = useToast();
-
-  const companies = companiesData as Company[];
   const [selectedCompanyName, setSelectedCompanyName] = useState<string>(companies[0].name);
   const [tradeAmount, setTradeAmount] = useState<string>("10000");
   const [sellAmounts, setSellAmounts] = useState<Record<string, string>>({});
@@ -196,7 +194,7 @@ export default function PortfolioPage() {
               No active holdings. Review fundamentals and buy stocks from the market panel!
             </div>
           ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-x-auto">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-x-auto no-scrollbar">
               <table className="w-full text-left text-sm text-slate-300">
                 <thead className="bg-slate-800/50 text-slate-400 text-xs uppercase tracking-wider">
                   <tr>
@@ -205,7 +203,7 @@ export default function PortfolioPage() {
                     <th className="px-4 py-3">Current</th>
                     <th className="px-4 py-3">P&L</th>
                     <th className="px-4 py-3">CAGR</th>
-                    <th className="px-4 py-3 text-right">Action</th>
+                    <th className="px-4 py-3 text-right pr-6">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
@@ -218,7 +216,7 @@ export default function PortfolioPage() {
 
                     return (
                       <tr key={item.companyName} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="px-4 py-4 min-w-[180px]">
+                        <td className="px-4 py-4 min-w-[140px]">
                           <div className="font-bold text-white"><CompanyLink companyName={item.companyName} /></div>
                           <div className="text-xs text-slate-500">{company?.sector}</div>
                         </td>
@@ -231,9 +229,9 @@ export default function PortfolioPage() {
                         <td className={`px-4 py-4 font-mono text-xs ${plPercent >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                           {calculateCAGR(item.costBasis, item.currentValue, quarterCount)?.toFixed(1) ?? "—"}%
                         </td>
-                        <td className="px-4 py-4 text-right">
+                        <td className="px-4 py-4 text-right pr-6 min-w-[160px]">
                           <div className="flex flex-col items-end gap-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                               <input
                                 type="text"
                                 value={sellVal === "" ? "" : Number(sellVal).toLocaleString("en-IN")}
@@ -241,8 +239,8 @@ export default function PortfolioPage() {
                                   const raw = e.target.value.replace(/[^\d]/g, '');
                                   setSellAmounts({ ...sellAmounts, [item.companyName]: raw });
                                 }}
-                                className="w-28 bg-slate-900 border border-slate-700 text-white text-xs rounded px-2 py-1.5 focus:outline-none focus:border-red-500 text-right"
-                                placeholder="Amount"
+                                className="w-24 bg-slate-900 border border-slate-700 text-white text-[11px] rounded px-2 py-1 focus:outline-none focus:border-red-500 text-right"
+                                placeholder="Amt"
                               />
                               <button
                                 onClick={() => {
@@ -251,13 +249,13 @@ export default function PortfolioPage() {
                                   if (amt > item.currentValue) return alert("Cannot sell more than current value.");
                                   sellStock(item.companyName, amt);
                                 }}
-                                className="text-red-400 hover:text-red-300 bg-red-400/10 hover:bg-red-400/20 px-3 py-1.5 rounded transition-colors text-sm"
+                                className="text-red-400 hover:text-red-300 bg-red-400/10 hover:bg-red-400/20 px-2.5 py-1 rounded transition-colors text-xs font-semibold"
                               >
                                 Sell
                               </button>
                             </div>
-                            <span className="text-[10px] text-slate-500 font-medium mr-14">
-                              {sellVal ? formatINR(Number(sellVal)) : "₹0"}
+                            <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap">
+                              {sellVal ? `Val: ${formatINR(Number(sellVal))}` : "₹0"}
                             </span>
                           </div>
                         </td>
