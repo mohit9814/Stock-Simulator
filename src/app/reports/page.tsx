@@ -6,11 +6,13 @@ import { getQuarterLabel } from "@/game/engine";
 import { BarChart3, TrendingUp, TrendingDown, Filter, Bot, User } from "lucide-react";
 import { useState } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cell, PieChart, Pie,
 } from "recharts";
+import { calculateRiskMetrics, RiskMetrics } from "@/lib/riskMetrics";
+import { Info, ShieldCheck, Zap, Activity, Target, ShieldAlert, BarChart2 } from "lucide-react";
 
 export default function ReportsPage() {
-  const { tradeLog, quarterCount } = useGameState();
+  const { tradeLog, quarterCount, history } = useGameState();
   const [typeFilter, setTypeFilter] = useState<"all" | "buy" | "sell">("all");
   const [sectorFilter, setSectorFilter] = useState("All");
   const [sourceFilter, setSourceFilter] = useState("All");
@@ -51,13 +53,115 @@ export default function ReportsPage() {
   const totalSold   = tradeLog.filter(t => t.type === "sell").reduce((s, t) => s + t.amount, 0);
   const numTrades   = tradeLog.length;
 
+  const riskMetrics = calculateRiskMetrics(history);
+
+  const riskCards = [
+    { 
+      label: "Sharpe Ratio", 
+      value: riskMetrics.sharpeRatio.toFixed(2), 
+      icon: <Activity className="text-emerald-400" size={16} />,
+      desc: "Excess return per unit of total risk. >1 is good, >2 is excellent.",
+      rating: riskMetrics.sharpeRatio > 1.5 ? "Excellent" : riskMetrics.sharpeRatio > 1 ? "Good" : "Sub-optimal"
+    },
+    { 
+      label: "Sortino Ratio", 
+      value: riskMetrics.sortinoRatio.toFixed(2), 
+      icon: <TrendingUp className="text-blue-400" size={16} />,
+      desc: "Return relative to downside volatility only. Better for asymmetrical returns.",
+      rating: riskMetrics.sortinoRatio > 2 ? "High Quality" : "Moderate"
+    },
+    { 
+      label: "Treynor Ratio", 
+      value: (riskMetrics.treynorRatio * 100).toFixed(2) + "%", 
+      icon: <Zap className="text-amber-400" size={16} />,
+      desc: "Excess return per unit of systematic risk (Beta).",
+      rating: "Efficiency"
+    },
+    { 
+      label: "Beta", 
+      value: riskMetrics.beta.toFixed(2), 
+      icon: <BarChart2 className="text-purple-400" size={16} />,
+      desc: "Sensitivity to market moves. <1 means less volatile than market.",
+      rating: riskMetrics.beta < 1 ? "Defensive" : "Aggressive"
+    },
+    { 
+      label: "Alpha (Qtr)", 
+      value: (riskMetrics.alpha * 100).toPrecision(2) + "%", 
+      icon: <Target className="text-emerald-500" size={16} />,
+      desc: "Outperformance relative to benchmark after adjusting for risk.",
+      rating: riskMetrics.alpha > 0 ? "Beating Market" : "Underperforming"
+    },
+    { 
+      label: "Standard Dev", 
+      value: (riskMetrics.stdDev * 100).toFixed(2) + "%", 
+      icon: <Activity className="text-slate-400" size={16} />,
+      desc: "Statistical measure of quarterly return volatility.",
+      rating: "Volatility"
+    },
+    { 
+      label: "Max Drawdown", 
+      value: (riskMetrics.maxDrawdown * 100).toFixed(1) + "%", 
+      icon: <ShieldAlert className="text-red-400" size={16} />,
+      desc: "Largest peak-to-trough decline in portfolio value.",
+      rating: riskMetrics.maxDrawdown < -0.15 ? "High Risk" : "Controlled"
+    },
+    { 
+      label: "R-Squared", 
+      value: riskMetrics.rSquared.toFixed(2), 
+      icon: <ShieldCheck className="text-teal-400" size={16} />,
+      desc: "How much of returns are explained by market moves. Closest to 1 = Index hugger.",
+      rating: riskMetrics.rSquared > 0.8 ? "Index Aligned" : "Active Strategy"
+    },
+    { 
+      label: "Value at Risk (95%)", 
+      value: (riskMetrics.var95 * 100).toFixed(1) + "%", 
+      icon: <ShieldAlert className="text-orange-400" size={16} />,
+      desc: "Potential quarterly loss with 95% confidence level.",
+      rating: "Risk Floor"
+    },
+  ];
+
   return (
     <div className="max-w-7xl mx-auto py-8 space-y-8 animate-in fade-in slide-in-from-bottom-4">
       {/* Header */}
       <div>
-        <h2 className="text-3xl font-bold text-white mb-2">Transaction Report</h2>
-        <p className="text-slate-400">Full audit trail of every buy and sell across all quarters.</p>
+        <h2 className="text-3xl font-bold text-white mb-2">Performance & Risk Analytics</h2>
+        <p className="text-slate-400">Deep dive into your risk-adjusted returns and audit trail.</p>
       </div>
+
+      {/* Risk Metrics Dashboard */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="text-emerald-400" size={20} />
+          <h3 className="text-xl font-bold text-white">Risk Dashboard</h3>
+          <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full uppercase tracking-tighter">vs Market Index</span>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {riskCards.map(card => (
+            <div key={card.label} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors group">
+              <div className="flex items-start justify-between mb-3">
+                <div className="p-2 bg-slate-800/50 rounded-xl group-hover:bg-slate-800 transition-colors">
+                  {card.icon}
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 bg-slate-950 px-2 py-1 rounded-md">
+                  {card.rating}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">{card.label}</h4>
+                <p className="text-2xl font-bold text-white mb-2">{card.value}</p>
+                <p className="text-[11px] text-slate-500 leading-relaxed italic border-t border-slate-800/50 pt-2">
+                  {card.desc}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Separator */}
+      <div className="h-px bg-slate-800/50" />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import companiesData from "@/data/companies.json";
 import { Company } from "@/types";
-import { Search, SlidersHorizontal, ArrowUpDown, ShoppingCart, TrendingDown } from "lucide-react";
+import { Search, SlidersHorizontal, ArrowUpDown, ShoppingCart, TrendingDown, Download } from "lucide-react";
 import CompanyLink from "@/components/CompanyLink";
 import { formatINR } from "@/lib/formatINR";
 import { useGameState } from "@/game/GameStateProvider";
@@ -24,6 +24,7 @@ const DEFAULT_FILTERS: NumericFilter[] = [
   { key: "roe",            label: "ROE (%)",        min: "", max: "" },
   { key: "debt_to_equity", label: "Debt/Eq",        min: "", max: "" },
   { key: "profit_growth",  label: "Profit Gr.(%)",  min: "", max: "" },
+  { key: "revenue_growth", label: "Rev Gr.(%)",     min: "", max: "" },
   { key: "profit_margin",  label: "Margin (%)",     min: "", max: "" },
   { key: "dividend_yield", label: "Div Yld (%)",    min: "", max: "" },
 ];
@@ -59,6 +60,35 @@ export default function ScreenerPage() {
   };
 
   const clearFilters = () => setFilters(DEFAULT_FILTERS.map(f => ({ ...f })));
+
+  const downloadCSV = () => {
+    const headers = ["Name", "Sector", "Price", "PE", "ROE", "ROCE", "Debt/Eq", "Rev Growth", "Profit Growth", "Margin", "PEG", "Div Yield"];
+    const rows = filteredData.map(c => [
+      c.name,
+      c.sector,
+      c.current_price,
+      c.pe,
+      c.roe,
+      c.roce,
+      c.debt_to_equity,
+      c.revenue_growth,
+      c.profit_growth,
+      c.profit_margin,
+      c.peg_ratio,
+      c.dividend_yield
+    ]);
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `screener_results_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast({ message: "📁 Screener results downloaded as CSV" });
+  };
 
   const filteredData = companies
     .filter(c => {
@@ -136,6 +166,12 @@ export default function ScreenerPage() {
             ${showFilters ? "bg-purple-600 border-purple-500 text-white" : "bg-slate-800 border-slate-700 text-slate-300 hover:text-white"}`}
         >
           <SlidersHorizontal size={14} /> Criteria
+        </button>
+        <button
+          onClick={downloadCSV}
+          className="px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-2"
+        >
+          <Download size={14} /> Download
         </button>
       </div>
 

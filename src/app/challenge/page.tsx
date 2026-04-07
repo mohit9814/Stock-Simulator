@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import companiesData from "@/data/companies.json";
 import { Company } from "@/types";
-import { generateTotalScore } from "@/game/engine";
 import { useGameState } from "@/game/GameStateProvider";
-import { CheckCircle2, XCircle, ArrowRight } from "lucide-react";
+import { generateTotalScore, calculateQualityScore, calculateValuationScore, calculateDebtScore, calculateGrowthScore } from "@/game/engine";
+import { CheckCircle2, XCircle, ArrowRight, Info, ShieldCheck, Zap, TrendingUp, BarChart2 } from "lucide-react";
 import CompanyLink from "@/components/CompanyLink";
 import { formatINR } from "@/lib/formatINR";
 
@@ -116,8 +116,20 @@ export default function ChallengePage() {
 
               {result && (
                 <div className="mt-6 pt-4 border-t border-slate-800 text-center">
-                  <span className="text-slate-400 text-sm block mb-1">Fundamental Score</span>
-                  <span className="text-2xl font-bold text-white">{score}</span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] uppercase tracking-tighter text-slate-500 font-bold border-b border-slate-800 pb-1">
+                      <span>Metric</span>
+                      <span>Points</span>
+                    </div>
+                    <ScoreItem label="Quality (ROE)" points={calculateQualityScore(company.roe)} />
+                    <ScoreItem label="Valuation (PE)" points={calculateValuationScore(company.pe)} />
+                    <ScoreItem label="Debt/Equity" points={calculateDebtScore(company.debt_to_equity)} />
+                    <ScoreItem label="Growth (Avg)" points={calculateGrowthScore((company.revenue_growth + company.profit_growth) / 2)} />
+                    <div className="flex justify-between items-center pt-2 border-t border-slate-700">
+                      <span className="text-slate-400 text-sm font-bold">Total Score</span>
+                      <span className="text-xl font-black text-white">{score}</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -126,35 +138,101 @@ export default function ChallengePage() {
       </div>
 
       {result && (
-        <div className={`p-6 rounded-2xl border ${result.isCorrect ? 'bg-emerald-950/30 border-emerald-900/50' : 'bg-red-950/30 border-red-900/50'} animate-in fade-in slide-in-from-bottom-4`}>
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-4 text-left">
-              {result.isCorrect ? (
-                <CheckCircle2 className="text-emerald-500 w-12 h-12 shrink-0" />
-              ) : (
-                <XCircle className="text-red-500 w-12 h-12 shrink-0" />
-              )}
-              <div>
-                <h4 className={`text-xl font-bold mb-1 ${result.isCorrect ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {result.isCorrect ? 'Correct Analysis!' : 'Not Quite Right'}
-                </h4>
-                <p className="text-slate-300">
-                  {result.isCorrect 
-                    ? `Great job identifying the stronger fundamentals. You earned ${result.xpChange} XP.` 
-                    : `The other company had a stronger fundamental score. You lost ${Math.abs(result.xpChange)} XP.`}
-                </p>
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <div className={`p-6 rounded-2xl border ${result.isCorrect ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-4 text-left">
+                {result.isCorrect ? (
+                  <CheckCircle2 className="text-emerald-500 w-12 h-12 shrink-0" />
+                ) : (
+                  <XCircle className="text-red-500 w-12 h-12 shrink-0" />
+                )}
+                <div>
+                  <h4 className={`text-xl font-bold mb-1 ${result.isCorrect ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {result.isCorrect ? 'Correct Analysis!' : 'Learning Opportunity'}
+                  </h4>
+                  <p className="text-slate-200">
+                    {result.isCorrect 
+                      ? `Great job identifying the stronger fundamentals. You earned ${result.xpChange} XP.` 
+                      : `The other company had a stronger fundamental profile. You lost ${Math.abs(result.xpChange)} XP.`}
+                  </p>
+                </div>
               </div>
+              
+              <button
+                onClick={loadNewChallenge}
+                className="w-full md:w-auto flex items-center justify-center gap-2 bg-white text-slate-900 font-bold px-6 py-3 rounded-xl hover:bg-slate-200 transition-colors shrink-0"
+              >
+                Next Challenge <ArrowRight size={18} />
+              </button>
             </div>
-            
-            <button
-              onClick={loadNewChallenge}
-              className="w-full md:w-auto flex items-center justify-center gap-2 bg-white text-slate-900 font-bold px-6 py-3 rounded-xl hover:bg-slate-200 transition-colors shrink-0"
-            >
-              Next Challenge <ArrowRight size={18} />
-            </button>
+          </div>
+
+          {/* Educational Insight */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+             <div className="flex items-center gap-2 mb-4">
+               <Zap size={20} className="text-amber-400" />
+               <h3 className="text-lg font-bold text-white">Investment Insight</h3>
+             </div>
+             
+             <div className="grid md:grid-cols-2 gap-8">
+               <div className="space-y-4">
+                 <p className="text-slate-400 text-sm leading-relaxed">
+                   In this simulation, we score companies based on <span className="text-white font-medium">Quality, Valuation, Debt, and Growth</span>. 
+                   A higher total score indicates a stock that offers better value for its quality and growth profile.
+                 </p>
+                 <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 space-y-3">
+                   <div className="flex gap-3">
+                     <ShieldCheck className="text-blue-400 shrink-0" size={18} />
+                     <p className="text-xs text-slate-300">
+                       <span className="text-blue-400 font-bold">Quality:</span> We look for ROE {">"} 15%. High ROE means the company is efficiently generating profits from shareholder equity.
+                     </p>
+                   </div>
+                   <div className="flex gap-3">
+                     <BarChart2 className="text-emerald-400 shrink-0" size={18} />
+                     <p className="text-xs text-slate-300">
+                       <span className="text-emerald-400 font-bold">Valuation:</span> Lower P/E ratios are preferred, but only if growth justifies it. P/E {">"} 50 is often considered expensive.
+                     </p>
+                   </div>
+                 </div>
+               </div>
+
+               <div className="space-y-3">
+                 <h4 className="text-slate-300 text-xs font-bold uppercase tracking-wider italic">Strategic Learning:</h4>
+                 <div className="p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl">
+                   <p className="text-sm text-purple-200 italic leading-relaxed">
+                     "{result.reasonA > result.reasonB ? optionA!.name : optionB!.name} won because its combination of 
+                     {Math.abs(calculateQualityScore((result.reasonA > result.reasonB ? optionA! : optionB!).roe)) > 1 ? " high efficiency (ROE)" : ""} 
+                     {Math.abs(calculateValuationScore((result.reasonA > result.reasonB ? optionA! : optionB!).pe)) > 1 ? " attractive valuation (P/E)" : ""}
+                     {Math.abs(calculateGrowthScore(((result.reasonA > result.reasonB ? optionA! : optionB!).revenue_growth + (result.reasonA > result.reasonB ? optionA! : optionB!).profit_growth)/2)) > 0 ? " and superior growth momentum" : ""}
+                     outpaced the alternative."
+                   </p>
+                   <p className="text-xs text-slate-500 mt-3">
+                     Tip: Always look for 'Double Engines' - companies with both high ROE and strong Profit Growth.
+                   </p>
+                 </div>
+               </div>
+             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ScoreItem({ label, points }: { label: string; points: number }) {
+  const getPointColor = (p: number) => {
+    if (p > 0) return "text-emerald-400";
+    if (p < 0) return "text-red-400";
+    return "text-slate-500";
+  };
+
+  return (
+    <div className="flex justify-between items-center text-xs">
+      <span className="text-slate-400">{label}</span>
+      <span className={`font-bold ${getPointColor(points)}`}>
+        {points > 0 ? `+${points}` : points}
+      </span>
     </div>
   );
 }

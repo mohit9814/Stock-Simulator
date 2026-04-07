@@ -12,6 +12,7 @@ const EMPTY_FORM: Omit<Strategy, "id"> = {
   maxPe: 35,
   maxDebt: 1.0,
   minProfitGrowth: 10,
+  minRevenueGrowth: 10,
   maxSectorPct: 30,
   pctCashPerCompany: 5,
   rebalanceFrequency: 1,
@@ -90,6 +91,7 @@ export default function StrategyPage() {
               { key: "maxPe", label: "Max P/E", step: "0.1" },
               { key: "maxDebt", label: "Max Debt/Equity", step: "0.1" },
               { key: "minProfitGrowth", label: "Min Profit Gr.(%)", step: "1" },
+              { key: "minRevenueGrowth", label: "Min Revenue Gr.(%)", step: "1" },
               { key: "maxSectorPct", label: "Max Sector % of portfolio", step: "5" },
               { key: "pctCashPerCompany", label: "% of Cash per Co", step: "0.5" },
               { key: "rebalanceFrequency", label: "Every N Quarters", step: "1" },
@@ -157,12 +159,12 @@ export default function StrategyPage() {
             <div><span className="text-slate-300 font-medium">Entry: </span>
               Every {form.rebalanceFrequency === 1 ? "quarter" : `${form.rebalanceFrequency} quarters`},
               invest <span className="text-purple-400 font-bold">{form.pctCashPerCompany}% of free cash</span> into companies with ROE ≥ {form.minRoe}%, PE ≤ {form.maxPe},
-              Debt/Eq ≤ {form.maxDebt}, Profit Growth ≥ {form.minProfitGrowth}%, capped at {form.maxSectorPct}% of NAV per sector.
+              Debt/Eq ≤ {form.maxDebt}, Profit Growth ≥ {form.minProfitGrowth}%, Revenue Growth ≥ {form.minRevenueGrowth}%, capped at {form.maxSectorPct}% of NAV per sector.
             </div>
             <div><span className="text-slate-300 font-medium">Exit: </span>
               {form.stopLossPct > 0 ? `Sell on −${form.stopLossPct}% loss. ` : "No stop-loss. "}
               {form.takeProfitPct > 0 ? `Sell on +${form.takeProfitPct}% gain. ` : "No take-profit. "}
-              {form.sellIfCriteriaFailed ? "Exit when fundamentals deteriorate." : "Hold even if criteria fail."}
+              {form.sellIfCriteriaFailed ? "Exit when fundamentals deteriorate (including Revenue/Profit growth drops below threshold)." : "Hold even if criteria fail."}
             </div>
           </div>
 
@@ -202,6 +204,7 @@ export default function StrategyPage() {
                         <Chip label={`PE ≤ ${s.maxPe}`} color="blue" />
                         <Chip label={`Debt ≤ ${s.maxDebt}`} color="amber" />
                         <Chip label={`Profit Gr ≥ ${s.minProfitGrowth}%`} color="green" />
+                        <Chip label={`Rev Gr ≥ ${s.minRevenueGrowth}%`} color="green" />
                         <Chip label={`Sector ≤ ${s.maxSectorPct}%`} color="purple" />
                         <Chip label={`${s.pctCashPerCompany}% Cash/co`} color="blue" />
                         <Chip label={`Freq: ${s.rebalanceFrequency}Q`} color="gray" />
@@ -224,6 +227,17 @@ export default function StrategyPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const { id, ...rest } = s;
+                          setForm({ ...rest, name: `${s.name} (Copy)` });
+                          setShowForm(true);
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-purple-500/40 text-purple-400 hover:bg-purple-500/10 transition-colors"
+                      >
+                        Copy
+                      </button>
                       <button
                         onClick={() => toggleStrategy(s.id)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors

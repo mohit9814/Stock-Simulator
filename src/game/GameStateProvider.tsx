@@ -1,10 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { GameState, PortfolioItem, TradeRecord, Strategy } from "@/types";
+import { GameState, PortfolioItem, TradeRecord, Strategy, Company, PortfolioHistory } from "@/types";
 import { getLevelFromXP, generateMarketEvents } from "./engine";
 import companiesData from "@/data/companies.json";
-import { Company } from "@/types";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +24,8 @@ function passesEntryFilter(co: Company, s: Strategy): boolean {
     co.roe >= s.minRoe &&
     co.pe <= s.maxPe &&
     co.debt_to_equity <= s.maxDebt &&
-    co.profit_growth >= s.minProfitGrowth
+    co.profit_growth >= (s.minProfitGrowth ?? 0) &&
+    co.revenue_growth >= (s.minRevenueGrowth ?? 0)
   );
 }
 
@@ -59,6 +59,7 @@ interface GameStateContextType extends GameState {
     currentCash: number,
     currentPortfolio: PortfolioItem[]
   ) => StrategyRunResult;
+  simulateQuarter: () => void;
   addStrategy: (s: Omit<Strategy, "id">) => void;
   removeStrategy: (id: string) => void;
   toggleStrategy: (id: string) => void;
@@ -77,6 +78,7 @@ const defaultState: GameState = {
   newsFeed: [],
   tradeLog: [],
   strategies: [],
+  indexValue: 1000000,
 };
 
 const GameStateContext = createContext<GameStateContextType | undefined>(undefined);
@@ -100,6 +102,7 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
         if (!p.strategies) p.strategies = [];
         if (p.quarterCount === undefined) p.quarterCount = 0;
         if (p.username === undefined)     p.username = "";
+        if (p.indexValue === undefined)   p.indexValue = 1000000;
 
         // Backfill source/reason on old trade records
         if (p.tradeLog) {
@@ -120,10 +123,20 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
               stopLossPct: ss.stopLossPct ?? 0,
               takeProfitPct: ss.takeProfitPct ?? 0,
               sellIfCriteriaFailed: ss.sellIfCriteriaFailed ?? false,
+              minRevenueGrowth: ss.minRevenueGrowth ?? 10,
               // Migration: amountPerCompany -> pctCashPerCompany
               pctCashPerCompany: ss.pctCashPerCompany ?? (ss.amountPerCompany ? 5 : 10),
             };
           });
+        }
+
+        // Backfill indexHistory if missing
+        if (p.history && Array.isArray(p.history)) {
+          p.history = p.history.map((h: any) => ({
+            quarter: h.quarter,
+            totalEquity: h.totalEquity,
+            indexValue: h.indexValue ?? 1000000,
+          })) as PortfolioHistory[];
         }
 
         setState(p as GameState);
@@ -355,6 +368,77 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
     return { updatedPortfolio: portfolio, remainingCash: cash, trades, exitMessages };
   }, [state.strategies]);
 
+  const simulateQuarter = useCallback(() => {
+    const nextQuarter = state.quarterCount + 1;
+    const companies = companiesData as Company[];
+    const { news, multipliers } = generateMarketEvents(companies, nextQuarter);
+
+    // 1. Calculate Index performance (average return of all stocks)
+    let totalMarketMultiplier = 0;
+    companies.forEach(company => {
+      const avgGrowth = (company.revenue_growth + company.profit_growth) / 2;
+      const drift = avgGrowth / 100 / 4;
+      const noise = (Math.random() * 0.16) - 0.08;
+      const eventMultiplier = multipliers[company.name] ?? 1.0;
+      totalMarketMultiplier += (1 + drift + noise) * eventMultiplier;
+    });
+    const marketReturn = totalMarketMultiplier / companies.length;
+    const newIndexValue = Math.round(state.indexValue * marketReturn);
+
+    // 2. Apply market price movements to existing holdings
+    let newPortfolio = state.portfolio.map(item => {
+      const company = companies.find(c => c.name === item.companyName);
+      if (!company) return item;
+      const avgGrowth = (company.revenue_growth + company.profit_growth) / 2;
+      const drift = avgGrowth / 100 / 4;
+      const noise = (Math.random() * 0.16) - 0.08;
+      const eventMultiplier = multipliers[item.companyName] ?? 1.0;
+      const multiplier = (1 + drift + noise) * eventMultiplier;
+      return { ...item, currentValue: Math.max(0, Math.round(item.currentValue * multiplier)) };
+    });
+
+    // 3. Run strategy engine
+    const { updatedPortfolio, remainingCash, trades, exitMessages } =
+      runStrategies(nextQuarter, state.cash, newPortfolio);
+    
+    newPortfolio = updatedPortfolio;
+    const newCash = remainingCash;
+
+    // Log strategy events
+    const buys = trades.filter(t => t.type === "buy").length;
+    const sells = trades.filter(t => t.type === "sell").length;
+    if (buys > 0) news.push(`🤖 Strategy Engine: ${buys} auto-buy(s) executed.`);
+    if (sells > 0) news.push(`📤 Strategy Engine: ${sells} auto-exit(s) triggered.`);
+    exitMessages.forEach(m => news.push(m));
+
+    // Calculate final stats
+    const newInvestedValue = newPortfolio.reduce((a, b) => a + b.currentValue, 0);
+    const totalEquityAfterQuarter = newCash + newInvestedValue;
+
+    // Commit changes
+    setState(prev => {
+      const updatedHistory: PortfolioHistory[] = [
+        ...prev.history,
+        { 
+          quarter: nextQuarter, 
+          totalEquity: totalEquityAfterQuarter,
+          indexValue: newIndexValue
+        }
+      ];
+
+      return {
+        ...prev,
+        cash: newCash,
+        portfolio: newPortfolio,
+        quarterCount: nextQuarter,
+        indexValue: newIndexValue,
+        history: updatedHistory,
+        newsFeed: [...news, ...prev.newsFeed].slice(0, 50),
+        tradeLog: trades.length > 0 ? [...trades, ...prev.tradeLog] : prev.tradeLog,
+      };
+    });
+  }, [state, runStrategies]);
+
   const updatePortfolioReturns = (
     newHoldings: PortfolioItem[],
     newCash: number,
@@ -368,7 +452,7 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
       cash: newCash,
       portfolio: newHoldings,
       quarterCount: newQuarter,
-      history: [...prev.history, { quarter: newQuarter, totalEquity: totalEquityAtQuarter }],
+      history: [...prev.history, { quarter: newQuarter, totalEquity: totalEquityAtQuarter, indexValue: prev.indexValue } as PortfolioHistory],
       newsFeed: [...newsItems, ...prev.newsFeed].slice(0, 50),
       tradeLog: extraTrades.length > 0
         ? [...extraTrades, ...prev.tradeLog]
@@ -428,6 +512,7 @@ export function GameStateProvider({ children }: { children: React.ReactNode }) {
       buyStock, sellStock,
       updatePortfolioReturns,
       runStrategies,
+      simulateQuarter,
       addStrategy, removeStrategy, toggleStrategy,
     }}>
       {children}

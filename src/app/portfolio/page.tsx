@@ -5,7 +5,6 @@ import { useState } from "react";
 import companiesData from "@/data/companies.json";
 import { Company } from "@/types";
 import { useGameState } from "@/game/GameStateProvider";
-import { generateMarketEvents } from "@/game/engine";
 import {
   TrendingUp, ArrowRightLeft, Activity, PieChart,
   LineChart as LineChartIcon, Newspaper, TrendingDown, Percent,
@@ -44,7 +43,7 @@ const PIE_COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4
 export default function PortfolioPage() {
   const {
     cash, portfolio, quarterCount, history, newsFeed,
-    buyStock, sellStock, updatePortfolioReturns, runStrategies,
+    buyStock, sellStock, simulateQuarter,
   } = useGameState();
   const { showToast, ToastRenderer } = useToast();
 
@@ -74,9 +73,17 @@ export default function PortfolioPage() {
   const pieData = Object.entries(sectorMap).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
 
   // ── Equity Chart ─────────────────────────────────────────────────────────
-  const chartHistory = history.map(h => ({ name: `Q${h.quarter}`, Equity: h.totalEquity }));
+  const chartHistory = history.map(h => ({ 
+    name: `Q${h.quarter}`, 
+    Portfolio: h.totalEquity,
+    Index: h.indexValue 
+  }));
   if (chartHistory.length === 0) {
-    chartHistory.push({ name: `Q${quarterCount}`, Equity: currentTotalEquity });
+    chartHistory.push({ 
+      name: `Q${quarterCount}`, 
+      Portfolio: currentTotalEquity,
+      Index: 1000000 
+    });
   }
 
   // ── Buy Handler ───────────────────────────────────────────────────────────
@@ -88,43 +95,6 @@ export default function PortfolioPage() {
     showToast({ message: `✅ Bought ${formatINR(amount)} of ${selectedCompanyName}` });
   };
 
-  // ── Simulate Quarter (price movement + strategy exits + strategy buys) ────
-  const simulateQuarter = () => {
-    const nextQuarter = quarterCount + 1;
-    const { news, multipliers } = generateMarketEvents(companies, nextQuarter);
-
-    // 1. Apply market price movements to existing holdings
-    let newPortfolio = portfolio.map(item => {
-      const company = companies.find(c => c.name === item.companyName);
-      if (!company) return item;
-      const avgGrowth = (company.revenue_growth + company.profit_growth) / 2;
-      const drift = avgGrowth / 100 / 4;
-      const noise = (Math.random() * 0.16) - 0.08;
-      const eventMultiplier = multipliers[item.companyName] ?? 1.0;
-      const multiplier = (1 + drift + noise) * eventMultiplier;
-      return { ...item, currentValue: Math.max(0, Math.round(item.currentValue * multiplier)) };
-    });
-
-    // 2. Run strategy engine (exits first, then buys)
-    let newCash = cash;
-    let strategyTrades: import("@/types").TradeRecord[] = [];
-    const { updatedPortfolio, remainingCash, trades, exitMessages } =
-      runStrategies(nextQuarter, cash, newPortfolio);
-    newPortfolio = updatedPortfolio;
-    newCash = remainingCash;
-    strategyTrades = trades;
-
-    const buys  = trades.filter(t => t.type === "buy").length;
-    const sells = trades.filter(t => t.type === "sell").length;
-    if (buys > 0)  news.push(`🤖 Strategy Engine: ${buys} auto-buy(s) executed.`);
-    if (sells > 0) news.push(`📤 Strategy Engine: ${sells} auto-exit(s) triggered.`);
-    // Surface individual exit reasons in the feed
-    exitMessages.forEach(m => news.push(m));
-
-    const newInvestedValue = newPortfolio.reduce((a, b) => a + b.currentValue, 0);
-    const totalEquityAfterQuarter = newCash + newInvestedValue;
-    updatePortfolioReturns(newPortfolio, newCash, nextQuarter, totalEquityAfterQuarter, news, strategyTrades);
-  };
 
   return (
     <div className="max-w-7xl mx-auto py-8 animate-in fade-in slide-in-from-bottom-4 space-y-8">
@@ -177,12 +147,14 @@ export default function PortfolioPage() {
                   tickFormatter={val => `₹${(val / 100000).toFixed(1)}L`} width={64} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }}
-                  itemStyle={{ color: '#10b981', fontWeight: 'bold' }}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(val: any) => [formatINR(Number(val ?? 0)), "Equity"]}
+                  itemStyle={{ fontWeight: 'bold' }}
+                  formatter={(val: any, name: any) => [formatINR(Number(val ?? 0)), String(name ?? "")]}
                 />
-                <Line type="monotone" dataKey="Equity" stroke="#10b981" strokeWidth={3}
+                <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '11px' }} />
+                <Line type="monotone" dataKey="Portfolio" stroke="#10b981" strokeWidth={3}
                   dot={{ fill: '#0f172a', strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="Index" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5"
+                  dot={false} activeDot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -232,7 +204,7 @@ export default function PortfolioPage() {
                     <th className="px-4 py-3">Invested</th>
                     <th className="px-4 py-3">Current</th>
                     <th className="px-4 py-3">P&L</th>
-                    <th className="px-4 py-3">Annualized</th>
+                    <th className="px-4 py-3">CAGR</th>
                     <th className="px-4 py-3 text-right">Action</th>
                   </tr>
                 </thead>

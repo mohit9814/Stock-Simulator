@@ -72,6 +72,8 @@ export interface Strategy {
   maxDebt: number;
   /** Minimum profit growth (%) required to buy */
   minProfitGrowth: number;
+  /** Minimum revenue growth (%) required to buy */
+  minRevenueGrowth: number;
   /** Percentage of available free cash to invest per qualifying company (0-100) */
   pctCashPerCompany: number;
 
@@ -105,6 +107,7 @@ export interface Strategy {
 export interface PortfolioHistory {
   quarter: number;
   totalEquity: number;
+  indexValue: number;
 }
 
 export interface GameState {
@@ -118,4 +121,5 @@ export interface GameState {
   newsFeed: string[];
   tradeLog: TradeRecord[];
   strategies: Strategy[];
+  indexValue: number;
 }
